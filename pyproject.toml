@@ -1,0 +1,22 @@
+[project]
+name = "oracle-ooc-checker"
+version = "0.1.0"
+description = "Oracle Cloud Always Free Ampere A1 capacity checker using OCI Compute Capacity Reports."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "oci>=2.177.0",
+    "requests>=2.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+ooc-checker = "ooc_checker.cli:main"
+
+[build-system]
+requires = ["setuptools>=70.0"]
+build-backend = "setuptools.build_meta"
