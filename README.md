@@ -15,6 +15,11 @@ Default target:
 
 You can raise the request to the Always Free Ampere allocation, for example `OCI_OCPUS=4` and `OCI_MEMORY_GB=24`.
 
+
+## No PC / iPhone-only setup
+
+If you only have an iPhone, use GitHub Actions so GitHub runs the checker for you in the cloud. Follow the dedicated guide: [iPhone-only setup guide](docs/iphone-setup.md).
+
 ## Quick start
 
 ```bash
