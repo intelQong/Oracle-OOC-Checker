@@ -1,0 +1,42 @@
+name: Check OCI Ampere A1 Capacity
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install checker
+        run: pip install -e .
+
+      - name: Configure OCI credentials
+        env:
+          OCI_CONFIG_FILE_CONTENT: ${{ secrets.OCI_CONFIG_FILE_CONTENT }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s' "$OCI_CONFIG_FILE_CONTENT" > ~/.oci/config
+          printf '%s' "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/config ~/.oci/oci_api_key.pem
+
+      - name: Check capacity
+        env:
+          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
+          OCI_AVAILABILITY_DOMAINS: ${{ secrets.OCI_AVAILABILITY_DOMAINS }}
+          OCI_SHAPE: VM.Standard.A1.Flex
+          OCI_OCPUS: ${{ vars.OCI_OCPUS || '1' }}
+          OCI_MEMORY_GB: ${{ vars.OCI_MEMORY_GB || '6' }}
+          OCI_AUTH: config
+          OCI_CONFIG_FILE: /home/runner/.oci/config
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EXIT_NONZERO_WHEN_UNAVAILABLE: "false"
+        run: ooc-checker
