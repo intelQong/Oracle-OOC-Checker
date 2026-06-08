@@ -26,6 +26,8 @@ class CheckerConfig:
     oci_profile: str = "DEFAULT"
     auth: str = "config"
     webhook_url: str | None = None
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
     notify_on_unavailable: bool = False
     exit_nonzero_when_unavailable: bool = False
     output_json: bool = False
@@ -73,7 +75,10 @@ def load_from_env(env: Mapping[str, str] | None = None) -> CheckerConfig:
         oci_profile=source.get("OCI_PROFILE", "DEFAULT"),
         auth=source.get("OCI_AUTH", "config").strip().lower(),
         webhook_url=source.get("WEBHOOK_URL") or None,
+        telegram_bot_token=source.get("TELEGRAM_BOT_TOKEN") or None,
+        telegram_chat_id=source.get("TELEGRAM_CHAT_ID") or None,
         notify_on_unavailable=_env_bool(source, "NOTIFY_ON_UNAVAILABLE"),
         exit_nonzero_when_unavailable=_env_bool(source, "EXIT_NONZERO_WHEN_UNAVAILABLE"),
         output_json=_env_bool(source, "OUTPUT_JSON"),
     )
+

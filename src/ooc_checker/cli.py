@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from pathlib import Path
@@ -12,9 +13,12 @@ from .config import load_from_env
 from .notify import format_summary, send_webhook
 from .setup_wizard import SetupConfig, discover_from_oci, write_env_file
 
+logger = logging.getLogger(__name__)
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check Oracle Cloud Ampere A1 Flex capacity with Compute Capacity Reports.")
+    parser.set_defaults(watch=False, interval=300)
     subparsers = parser.add_subparsers(dest="command")
 
     configure = subparsers.add_parser("configure", help="Generate a ready-to-edit .env configuration file.")
@@ -35,6 +39,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--watch", action="store_true", help="Run forever instead of checking once.")
     parser.add_argument("--interval", type=int, default=300, help="Seconds between checks in --watch mode. Default: 300.")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose/debug logging output.")
     return parser.parse_args(argv)
 
 
@@ -50,9 +55,13 @@ def execute_check() -> tuple[int, bool]:
     else:
         print(format_summary(results))
 
-    should_notify = bool(config.webhook_url) and (is_available or config.notify_on_unavailable)
+    should_notify = is_available or config.notify_on_unavailable
     if should_notify:
-        send_webhook(config.webhook_url or "", results)
+        if config.webhook_url:
+            send_webhook(config.webhook_url, results)
+        if config.telegram_bot_token and config.telegram_chat_id:
+            from .notify import send_telegram
+            send_telegram(config.telegram_bot_token, config.telegram_chat_id, results)
 
     if not is_available and config.exit_nonzero_when_unavailable:
         return 2, is_available
@@ -68,6 +77,21 @@ def _split_domains(value: str | None) -> tuple[str, ...]:
     if not value:
         return ()
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _post_configure_hint(destination: Path) -> str:
+    """Return a platform-aware hint for loading the generated .env file."""
+
+    if sys.platform == "win32":
+        return (
+            f"Wrote {destination}.\n"
+            f"On PowerShell, load it with:\n"
+            f"  Get-Content {destination} | ForEach-Object {{ if ($_ -and $_[0] -ne '#') {{ $k,$v = $_ -split '=',2; [Environment]::SetEnvironmentVariable($k,$v,'Process') }} }}\n"
+            f"  ooc-checker\n"
+            f"Or on Bash/WSL:\n"
+            f"  set -a && . {destination} && set +a && ooc-checker"
+        )
+    return f"Wrote {destination}. Run: set -a && . {destination} && set +a && ooc-checker"
 
 
 def configure(args: argparse.Namespace) -> int:
@@ -99,23 +123,38 @@ def configure(args: argparse.Namespace) -> int:
         exit_nonzero_when_unavailable=args.exit_nonzero_when_unavailable,
     )
     destination = write_env_file(Path(args.output), setup_config, overwrite=args.force)
-    print(f"Wrote {destination}. Run: set -a && . {destination} && set +a && ooc-checker")
+    print(_post_configure_hint(destination))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+
+    logging.basicConfig(
+        format="%(levelname)s: %(message)s",
+        level=logging.DEBUG if getattr(args, "verbose", False) else logging.WARNING,
+    )
+
     if args.command == "configure":
         return configure(args)
 
     if not args.watch:
         return run_once()
 
-    while True:
-        exit_code, is_available = execute_check()
-        if is_available:
-            return exit_code
-        time.sleep(args.interval)
+    try:
+        while True:
+            try:
+                exit_code, is_available = execute_check()
+            except Exception:
+                logger.exception("Check failed, retrying in %d seconds", args.interval)
+                time.sleep(args.interval)
+                continue
+            if is_available:
+                return exit_code
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user.")
+        return 130
 
 
 if __name__ == "__main__":

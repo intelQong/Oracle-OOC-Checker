@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Iterable, Sequence
 
 import oci
 
 from .config import CheckerConfig
 from .models import AvailabilityResult
+
+logger = logging.getLogger(__name__)
 
 
 def build_compute_client(config: CheckerConfig) -> oci.core.ComputeClient:
@@ -68,20 +71,27 @@ def normalize_report_rows(
 
 
 def check_capacity(config: CheckerConfig, client: oci.core.ComputeClient | None = None) -> list[AvailabilityResult]:
-    """Check capacity for the configured shape across all configured availability domains."""
+    """Check capacity for the configured shape across all configured availability domains.
+
+    Errors for individual availability domains are logged and skipped so that a
+    transient failure on one AD does not prevent the remaining ADs from being checked.
+    """
 
     compute_client = client or build_compute_client(config)
     shape_availability = make_shape_availability(config)
     results: list[AvailabilityResult] = []
 
     for availability_domain in config.availability_domains:
-        details = oci.core.models.CreateComputeCapacityReportDetails(
-            compartment_id=config.compartment_id,
-            availability_domain=availability_domain,
-            shape_availabilities=[shape_availability],
-        )
-        response = compute_client.create_compute_capacity_report(details)
-        report_rows: Sequence[object] = response.data.shape_availabilities or []
-        results.extend(normalize_report_rows(availability_domain, report_rows, config.ocpus, config.memory_gb))
+        try:
+            details = oci.core.models.CreateComputeCapacityReportDetails(
+                compartment_id=config.compartment_id,
+                availability_domain=availability_domain,
+                shape_availabilities=[shape_availability],
+            )
+            response = compute_client.create_compute_capacity_report(details)
+            report_rows: Sequence[object] = response.data.shape_availabilities or []
+            results.extend(normalize_report_rows(availability_domain, report_rows, config.ocpus, config.memory_gb))
+        except (oci.exceptions.ServiceError, oci.exceptions.RequestException) as exc:
+            logger.warning("Failed to check AD %s: %s", availability_domain, exc)
 
     return results

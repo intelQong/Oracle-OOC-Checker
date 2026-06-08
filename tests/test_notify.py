@@ -21,3 +21,25 @@ def test_format_summary_includes_capacity_details():
     assert "AVAILABLE" in summary
     assert "4 OCPU" in summary
     assert "24 GB" in summary
+
+
+def test_send_webhook_suppresses_exceptions():
+    from unittest.mock import patch
+    import requests
+    from ooc_checker.notify import send_webhook
+
+    with patch("requests.post", side_effect=requests.RequestException("connection error")):
+        # Should not raise an exception
+        send_webhook("http://example.com/webhook", [])
+
+
+def test_send_telegram_suppresses_exceptions():
+    from unittest.mock import patch
+    import requests
+    from ooc_checker.notify import send_telegram
+
+    with patch("requests.post", side_effect=requests.RequestException("connection error")):
+        # Should not raise an exception
+        send_telegram("mock_token", "mock_chat_id", [])
+
+
